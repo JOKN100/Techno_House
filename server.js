@@ -21,10 +21,6 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 const MQTT_PORT = 1883;
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
-
 
 // ================== 1. Models ==================
 const userSchema = new mongoose.Schema({
@@ -83,9 +79,6 @@ const Schedule = mongoose.model('Schedule', scheduleSchema);
 // ================== 2. Data Seeding ==================
 async function seedDatabase() {
     const defaultHouse = "HOUSE1";
-
-    // await Device.deleteMany({ houseCode: defaultHouse });
-    // await Room.deleteMany({ houseCode: defaultHouse });
 
     const rooms = [
         { name: 'Living Room', key: 'living', houseCode: defaultHouse },
@@ -523,51 +516,49 @@ async function startServer() {
             console.log(`❌ Hardware (ESP) Disconnected: ${client ? client.id : client}`);
         });
 
-        // ✅ استقبال قراءات الحساسات والإنذارات من الـ ESP عن طريق MQTT بدلاً من الـ HTTP
+        // ✅ استقبال قراءات الحساسات والإنذارات من الـ ESP عن طريق MQTT
         aedes.on('publish', async function (packet, client) {
             const topic = packet.topic;
-    const payload = packet.payload.toString();
+            const payload = packet.payload.toString();
 
-    // 1. إذا كانت الرسالة صادرة من السيرفر نفسه (فتح/قفل الباب أو التحكم باللمبات)
-    if (!client) {
-        console.log(`📤 [MQTT Broker] Outgoing Command -> Topic: [${topic}] | Payload: [${payload}]`);
-        return; // نكتفي بطباعتها للتأكد من خروجها للهاردوير ولا نتابع كود الفحص السفلي
-    }
+            // 1. إذا كانت الرسالة صادرة من السيرفر نفسه
+            if (!client) {
+                console.log(`📤 [MQTT Broker] Outgoing Command -> Topic: [${topic}] | Payload: [${payload}]`);
+                return;
+            }
 
-    // 2. إذا كانت الرسالة قادمة من الـ ESP32 (تحديث حساس أو حالة باب)
-    // تفكيك الـ Topic ديناميكياً بدلاً من التثبيت الحرفي
-    // المتوقع: technohome/{houseCode}/{roomKey}/{deviceName}/update أو ما يشابهه
-    const topicParts = topic.split('/'); 
-    
-    if (topicParts[0] === 'technohome' && topic.endsWith('update')) {
-        try {
-            const data = JSON.parse(payload);
-            const { sensorName, value, houseCode, roomKey } = data;
+            // 2. إذا كانت الرسالة قادمة من الـ ESP32
+            const topicParts = topic.split('/'); 
+            
+            if (topicParts[0] === 'technohome' && topic.endsWith('update')) {
+                try {
+                    const data = JSON.parse(payload);
+                    const { sensorName, value, houseCode, roomKey } = data;
 
-            // التأكد من وصول البيانات كاملة من الـ ESP
-            if (!sensorName || value === undefined || !houseCode || !roomKey) return;
+                    if (!sensorName || value === undefined || !houseCode || !roomKey) return;
 
-            // 1. تحديث واجهة الموبايل فوراً عبر السوكيت
-            io.to(houseCode).emit('update_ui', { roomKey, sensorName, value });
+                    // 1. تحديث واجهة الموبايل فوراً عبر السوكيت
+                    io.to(houseCode).emit('update_ui', { roomKey, sensorName, value });
 
-            // 2. تسجيل الحدث في الداتابيز
-            await Log.create({
-                sensorName, 
-                value, 
-                roomKey, 
-                houseCode, 
-                eventType: sensorName.toLowerCase().includes('door') ? 'door' : 'sensor', 
-                triggeredBy: 'hardware'
-            });
+                    // 2. تسجيل الحدث في الداتابيز
+                    await Log.create({
+                        sensorName, 
+                        value, 
+                        roomKey, 
+                        houseCode, 
+                        eventType: sensorName.toLowerCase().includes('door') ? 'door' : 'sensor', 
+                        triggeredBy: 'hardware'
+                    });
 
-            // 3. تحديث حالة الجهاز أو الباب في الداتابيز لضمان تزامن الحالات
-            await Device.findOneAndUpdate(
-                { name: sensorName, roomKey, houseCode },
-                { status: value === 1 || value === "ON", value: Number(value) || 0 }
-            );
-                    // 3. إرسال إنذار خطر للموبايل في حالة الاختراق
-                    if (sensorName === 'Intruder Alert' && value === 1||value === "ON") {
-                        io.to("HOUSE1").emit('danger_alert', {
+                    // 3. تحديث حالة الجهاز أو الباب في الداتابيز
+                    await Device.findOneAndUpdate(
+                        { name: sensorName, roomKey, houseCode },
+                        { status: value === 1 || value === "ON", value: Number(value) || 0 }
+                    );
+
+                    // 4. إرسال إنذار خطر للموبايل في حالة الاختراق (بشكل ديناميكي)
+                    if (sensorName === 'Intruder Alert' && (value === 1 || value === "ON")) {
+                        io.to(houseCode).emit('danger_alert', {
                             type: 'SECURITY', roomKey: "hallway", value: 1, message: '⚠️ تنبيه: تم رصد محاولة اختراق للباب!'
                         });
                     }
@@ -579,6 +570,7 @@ async function startServer() {
             }
         });
 
+        // تشغيل السيرفر الأساسي (الوحيد)
         server.listen(PORT, () => {
             console.log(`🚀 Server listening on port ${PORT}`);
         });
