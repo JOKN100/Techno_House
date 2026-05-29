@@ -156,7 +156,7 @@ async function seedDatabase() {
         { name: 'Fan',           type: 'fan',    roomKey: 'storage',  houseCode: H, value: 0, status: false },
         // Garage
         { name: 'Light',         type: 'light',  roomKey: 'garage',   houseCode: H },
-        { name: 'GarageDoor',    type: 'door',   roomKey: 'garage',   houseCode: H, pinCode: pinDoor },
+        { name: 'GarageDoor',    type: 'door',   roomKey: 'garage',   houseCode: H },
         // Hallway
         { name: 'Light1',        type: 'light',  roomKey: 'hallway',  houseCode: H },
         { name: 'Light2',        type: 'light',  roomKey: 'hallway',  houseCode: H },
