@@ -8,6 +8,7 @@ const jwt       = require('jsonwebtoken');
 const cors      = require('cors');
 const bcrypt    = require('bcrypt');
 const rateLimit = require('express-rate-limit');
+const helmet    = require('helmet');
 const mqtt      = require('mqtt');
 
 // ─────────────────────────────────────────────
@@ -27,6 +28,7 @@ const io     = new Server(server, {
 // ─────────────────────────────────────────────
 //  Global Middleware
 // ─────────────────────────────────────────────
+app.use(helmet());                        // ✅ Security headers
 app.use(express.json({ limit: '10kb' })); // ✅ حد لحجم الـ body
 app.use(cors({
     origin: process.env.ALLOWED_ORIGINS
