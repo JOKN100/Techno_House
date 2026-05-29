@@ -116,7 +116,7 @@ function mqttPublish(topic, payload) {
 // ─────────────────────────────────────────────
 async function seedDatabase() {
     const H              = 'HOUSE1';
-    const pinDoor        = await bcrypt.hash('1234', 10);
+//    const pinDoor        = await bcrypt.hash('1234', 10);
     const pinApartment   = await bcrypt.hash('0000', 10);
 
     const rooms = [
