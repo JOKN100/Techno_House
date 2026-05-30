@@ -749,7 +749,7 @@ function _emitSensorAlerts(io, houseCode, roomKey, sensorName, value) {
         if (motionCounters[trackerKey].count >= 7) {
             mqttPublish(technohome/${houseCode}/${roomKey}/alert, JSON.stringify({
                 type: 'MOTION_ALARM',
-                message: ⚠️ Motion Detected ${roomKey}!
+                message: `⚠️ Motion Detected ${roomKey}!`
             }));
             // إرسال الإنذار لأبلكيشن الفلاتر عبر السوكيت
             io.to(houseCode).emit('danger_alert', {
