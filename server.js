@@ -135,7 +135,7 @@ async function seedDatabase() {
         { name: 'Light1',        type: 'light',  roomKey: 'living',   houseCode: H },
         { name: 'Light2',        type: 'light',  roomKey: 'living',   houseCode: H },
         { name: 'Fan',           type: 'fan',    roomKey: 'living',   houseCode: H, value: 0, status: false },
-        { name: 'Motion Sensor', type: 'sensor', roomKey: 'living',   houseCode: H },
+        { name: 'Motion Sensor', type: 'sensor', roomKey: 'living',   houseCode: H, value: 0},
         { name: 'Temperature',   type: 'sensor', roomKey: 'living',   houseCode: H },
         // Bedroom
         { name: 'Light',         type: 'light',  roomKey: 'bedroom',  houseCode: H },
@@ -691,28 +691,76 @@ function handleMqttMessage(topic, message) {
 }
 
 // ─────────────────────────────────────────────
-//  10. Sensor Alerts Helper
-// ─────────────────────────────────────────────
+//  10. Sensor Alerts Helper (مع العداد الذكي للحركة)
+// ⚠️ أوبجيكت خارجي لتخزين عدد الحركات لكل غرفة بشكل مؤقت في الميموري
+const motionCounters = {};
+
 function _emitSensorAlerts(io, houseCode, roomKey, sensorName, value) {
     const name = sensorName.toLowerCase();
 
+    // 1. إنذار محاولة اختراق الباب الكيباد/الكارت
     if (sensorName === 'Intruder Alert' && value === 1) {
         io.to(houseCode).emit('danger_alert', {
             type: 'SECURITY', roomKey, value: 1,
             message: '⚠️ تنبيه: تم رصد محاولة اختراق للباب!'
         });
     }
+
+    // 2. إنذار الغاز
     if (name.includes('gas') && value > 400) {
         io.to(houseCode).emit('danger_alert', {
             type: 'GAS', roomKey, value,
             message: `⚠️ Gas leak detected in ${roomKey}! Value: ${value}`
         });
     }
+
+    // 3. إنذار الحرارة
     if (name.includes('temperature') && value > 45) {
         io.to(houseCode).emit('danger_alert', {
             type: 'TEMPERATURE', roomKey, value,
             message: `⚠️ High temperature in ${roomKey}! Temp: ${value}°C`
         });
+    }
+
+    // 4. ⚠️ التعديل الجديد: العداد الذكي لحساس الحركة (PIR)
+    if (sensorName === 'Motion Sensor' && value === 1) {
+        const trackerKey = `${houseCode}_${roomKey}`; // مفتاح مميز لكل غرفة
+        const now = Date.now();
+
+        // لو دي أول حركة تترصد، ننشئ العداد للغرفة دي
+        if (!motionCounters[trackerKey]) {
+            motionCounters[trackerKey] = { count: 0, lastMotionTime: now };
+        }
+
+        // Time Window: لو عدى أكتر من دقيقتين (120,000 ملي ثانية) على آخر حركة..
+        // هنصفر العداد عشان ميحسبش حركات متفرقة على مدار اليوم كأنها "ورا بعض"
+        if (now - motionCounters[trackerKey].lastMotionTime > 120000) {
+            motionCounters[trackerKey].count = 0;
+            console.log(`⏳ Motion timeout in [${roomKey}] - Counter Reset to 0`);
+        }
+
+        // نزود العداد بمقدار 1 مع كل حركة جديدة وتحديث وقت الحركة
+        motionCounters[trackerKey].count += 1;
+        motionCounters[trackerKey].lastMotionTime = now;
+
+        console.log(`🏃‍♂️ Motion Count [${roomKey}]: ${motionCounters[trackerKey].count}/7`);
+
+        // الشرط الحاسم: لو العداد وصل لـ 7 حركات متتالية ضمن الوقت المحدد
+        if (motionCounters[trackerKey].count >= 7) {
+            
+            // إرسال الإنذار لأبلكيشن الفلاتر عبر السوكيت
+            io.to(houseCode).emit('danger_alert', {
+                type: 'MOTION_ALARM', 
+                roomKey, 
+                value: motionCounters[trackerKey].count,
+                message: `⚠️ تنبيه أمني: رصد حركة مستمرة ومشبوهة في ${roomKey}!`
+            });
+
+            console.log(`🚨 MOTION ALARM TRIGGERED in [${roomKey}]!`);
+
+            // تصفير العداد بعد إرسال الإنذار عشان ميفضلش يبعت إشعارات ورا بعض ويعلق الأبلكيشن
+            motionCounters[trackerKey].count = 0;
+        }
     }
 }
 
