@@ -747,13 +747,16 @@ function _emitSensorAlerts(io, houseCode, roomKey, sensorName, value) {
 
         // الشرط الحاسم: لو العداد وصل لـ 7 حركات متتالية ضمن الوقت المحدد
         if (motionCounters[trackerKey].count >= 7) {
-            
+            mqttPublish(technohome/${houseCode}/${roomKey}/alert, JSON.stringify({
+                type: 'MOTION_ALARM',
+                message: ⚠️ Motion Detected ${roomKey}!
+            }));
             // إرسال الإنذار لأبلكيشن الفلاتر عبر السوكيت
             io.to(houseCode).emit('danger_alert', {
                 type: 'MOTION_ALARM', 
                 roomKey, 
                 value: motionCounters[trackerKey].count,
-                message: `⚠️ تنبيه أمني: رصد حركة مستمرة ومشبوهة في ${roomKey}!`
+                message: `⚠️ Motion Detected ${roomKey}!`
             });
 
             console.log(`🚨 MOTION ALARM TRIGGERED in [${roomKey}]!`);
