@@ -76,7 +76,6 @@ const deviceSchema = new mongoose.Schema({
     houseCode: { type: String, required: true },
     status:    { type: Boolean, default: false },
     value:     { type: Number,  default: 0 },
-    // ✅ FIX: pinCode مش required للمبات والمراوح — فقط للأبواب
     pinCode:   { type: String, default: '' }
 });
 
@@ -104,7 +103,6 @@ function mqttPublish(topic, payload) {
         console.warn(`⚠️  MQTT client not initialized — skipped: ${topic}`);
         return;
     }
-    // ✅ FIX: لا نوقف على connected check — الـ mqtt package بيـ queue الرسائل
     mqttClient.publish(topic, String(payload), { qos: 1, retain: false }, (err) => {
         if (err) console.error(`❌ MQTT Publish Error [${topic}]:`, err.message);
         else     console.log(`📤 MQTT → [${topic}] : [${payload}]`);
@@ -116,7 +114,6 @@ function mqttPublish(topic, payload) {
 // ─────────────────────────────────────────────
 async function seedDatabase() {
     const H              = 'HOUSE1';
-//    const pinDoor        = await bcrypt.hash('1234', 10);
     const pinApartment   = await bcrypt.hash('0000', 10);
 
     const rooms = [
@@ -131,33 +128,32 @@ async function seedDatabase() {
     ];
 
     const devices = [
-        // Living Room
         { name: 'Light1',        type: 'light',  roomKey: 'living',   houseCode: H },
         { name: 'Light2',        type: 'light',  roomKey: 'living',   houseCode: H },
         { name: 'Fan',           type: 'fan',    roomKey: 'living',   houseCode: H, value: 0, status: false },
         { name: 'Motion Sensor', type: 'sensor', roomKey: 'living',   houseCode: H, value: 0},
         { name: 'Temperature',   type: 'sensor', roomKey: 'living',   houseCode: H },
-        // Bedroom
+        
         { name: 'Light',         type: 'light',  roomKey: 'bedroom',  houseCode: H },
         { name: 'Fan',           type: 'fan',    roomKey: 'bedroom',  houseCode: H, value: 0, status: false },
         { name: 'Temperature',   type: 'sensor', roomKey: 'bedroom',  houseCode: H },
-        // Bathroom
+        
         { name: 'Light',         type: 'light',  roomKey: 'bathroom', houseCode: H },
         { name: 'Gas',           type: 'sensor', roomKey: 'bathroom', houseCode: H },
-        // Kitchen
+        
         { name: 'Light',         type: 'light',  roomKey: 'kitchen',  houseCode: H },
         { name: 'Temperature',   type: 'sensor', roomKey: 'kitchen',  houseCode: H },
         { name: 'Gas Sensor',    type: 'sensor', roomKey: 'kitchen',  houseCode: H },
-        // Kids Room
+        
         { name: 'Light',         type: 'light',  roomKey: 'kidsroom', houseCode: H },
         { name: 'Fan',           type: 'fan',    roomKey: 'kidsroom', houseCode: H, value: 0, status: false },
-        // Storage
+        
         { name: 'Light',         type: 'light',  roomKey: 'storage',  houseCode: H },
         { name: 'Fan',           type: 'fan',    roomKey: 'storage',  houseCode: H, value: 0, status: false },
-        // Garage
+        
         { name: 'Light',         type: 'light',  roomKey: 'garage',   houseCode: H },
         { name: 'GarageDoor',    type: 'door',   roomKey: 'garage',   houseCode: H },
-        // Hallway
+        
         { name: 'Light1',        type: 'light',  roomKey: 'hallway',  houseCode: H },
         { name: 'Light2',        type: 'light',  roomKey: 'hallway',  houseCode: H },
         { name: 'ApartmentDoor', type: 'door',   roomKey: 'hallway',  houseCode: H, pinCode: pinApartment, status: false },
@@ -303,7 +299,7 @@ app.get('/api/rooms/:roomKey/devices', authMiddleware, async (req, res) => {
         const devices = await Device.find({
             roomKey:   req.params.roomKey,
             houseCode: req.user.houseCode
-        }).select('-pinCode'); // ✅ لا نرسل الـ pinCode للـ client
+        }).select('-pinCode'); 
         res.json(devices);
     } catch { res.status(500).json({ error: 'Failed to fetch devices' }); }
 });
@@ -356,7 +352,6 @@ app.post('/api/sensor/update', hardwareAuth, async (req, res) => {
         if (!roomKey || !sensorName || value === undefined || !houseCode)
             return res.status(400).json({ error: 'Missing required fields' });
 
-        // ✅ FIX: استخدام { new: true } بدل returnDocument
         const device = await Device.findOneAndUpdate(
             { roomKey, name: sensorName, houseCode },
             { value },
@@ -530,7 +525,7 @@ app.get('/api/logs', authMiddleware, async (req, res) => {
 
         const logs = await Log.find(filter)
             .sort({ timestamp: -1 })
-            .limit(Math.min(parseInt(limit) || 50, 200)); // ✅ max 200
+            .limit(Math.min(parseInt(limit) || 50, 200)); 
         res.json(logs);
     } catch { res.status(500).json({ error: 'Failed' }); }
 });
@@ -549,18 +544,13 @@ io.on('connection', (socket) => {
     });
 });
 
-
 // ─────────────────────────────────────────────
 //  9b. MQTT Door Command Handler
 // ─────────────────────────────────────────────
-// تست من MQTTX:
-//   Topic:   technohome/HOUSE1/hallway/door/command
-//   Payload: {"doorName":"ApartmentDoor","pin":"0000"}
 function handleMqttDoorCommand(topic, message) {
     const payload = message.toString();
     const parts   = topic.split('/');
 
-    // format: technohome/{houseCode}/{roomKey}/door/command
     if (parts.length !== 5 ||
         parts[0] !== 'technohome' ||
         parts[3] !== 'door'      ||
@@ -585,7 +575,6 @@ function handleMqttDoorCommand(topic, message) {
                 return;
             }
 
-            // التحقق من الـ PIN
             const pinMatch = await bcrypt.compare(pin, device.pinCode);
             if (!pinMatch) {
                 console.warn(`❌ [MQTT Door] Wrong PIN for: ${doorName}`);
@@ -593,13 +582,11 @@ function handleMqttDoorCommand(topic, message) {
                     sensorName: device.name, value: 0,
                     roomKey, houseCode, eventType: 'door', triggeredBy: 'mqtt'
                 });
-                // ابعت رد للـ MQTTX
                 mqttPublish(`technohome/${houseCode}/${roomKey}/door/response`,
                     JSON.stringify({ doorName, success: false, message: 'Wrong PIN' }));
                 return;
             }
 
-            // فتح الباب
             device.status = true;
             await device.save();
 
@@ -612,13 +599,11 @@ function handleMqttDoorCommand(topic, message) {
             mqttPublish(doorTopic, 'UNLOCK');
             io.to(houseCode).emit('device_updated', { ...device.toObject(), pinCode: undefined });
 
-            // رد للـ MQTTX
             mqttPublish(`technohome/${houseCode}/${roomKey}/door/response`,
                 JSON.stringify({ doorName, success: true, message: 'Door Unlocked' }));
 
             console.log(`✅ [MQTT Door] ${doorName} Unlocked`);
 
-            // Auto-lock بعد 5 ثواني
             setTimeout(async () => {
                 try {
                     device.status = false;
@@ -646,7 +631,6 @@ function handleMqttMessage(topic, message) {
     const payload    = message.toString();
     const parts      = topic.split('/');
 
-    // format: technohome/{houseCode}/{roomKey}/sensor/update
     if (parts.length !== 5 ||
         parts[0] !== 'technohome' ||
         parts[3] !== 'sensor'    ||
@@ -660,7 +644,6 @@ function handleMqttMessage(topic, message) {
             const { sensorName, value } = JSON.parse(payload);
             if (!sensorName || value === undefined) return;
 
-            // 1. حدّث الـ DB
             const device = await Device.findOneAndUpdate(
                 { name: sensorName, roomKey, houseCode },
                 { value },
@@ -671,16 +654,12 @@ function handleMqttMessage(topic, message) {
                 return;
             }
 
-            // 2. سجّل الحدث
             await Log.create({
                 sensorName, value, roomKey, houseCode,
                 eventType: 'sensor', triggeredBy: 'hardware'
             });
 
-            // 3. حدّث الموبايل
             io.to(houseCode).emit('update_ui', { roomKey, sensorName, value });
-
-            // 4. إنذارات
             _emitSensorAlerts(io, houseCode, roomKey, sensorName, value);
 
             console.log(`✅ [MQTT] ${houseCode}/${roomKey}/${sensorName} = ${value}`);
@@ -692,13 +671,12 @@ function handleMqttMessage(topic, message) {
 
 // ─────────────────────────────────────────────
 //  10. Sensor Alerts Helper (مع العداد الذكي للحركة)
-// ⚠️ أوبجيكت خارجي لتخزين عدد الحركات لكل غرفة بشكل مؤقت في الميموري
+// ─────────────────────────────────────────────
 const motionCounters = {};
 
 function _emitSensorAlerts(io, houseCode, roomKey, sensorName, value) {
     const name = sensorName.toLowerCase();
 
-    // 1. إنذار محاولة اختراق الباب الكيباد/الكارت
     if (sensorName === 'Intruder Alert' && value === 1) {
         io.to(houseCode).emit('danger_alert', {
             type: 'SECURITY', roomKey, value: 1,
@@ -706,7 +684,6 @@ function _emitSensorAlerts(io, houseCode, roomKey, sensorName, value) {
         });
     }
 
-    // 2. إنذار الغاز
     if (name.includes('gas') && value > 400) {
         io.to(houseCode).emit('danger_alert', {
             type: 'GAS', roomKey, value,
@@ -714,7 +691,6 @@ function _emitSensorAlerts(io, houseCode, roomKey, sensorName, value) {
         });
     }
 
-    // 3. إنذار الحرارة
     if (name.includes('temperature') && value > 45) {
         io.to(houseCode).emit('danger_alert', {
             type: 'TEMPERATURE', roomKey, value,
@@ -722,36 +698,31 @@ function _emitSensorAlerts(io, houseCode, roomKey, sensorName, value) {
         });
     }
 
-    // 4. ⚠️ التعديل الجديد: العداد الذكي لحساس الحركة (PIR)
     if (sensorName === 'Motion Sensor' && value === 1) {
-        const trackerKey = `${houseCode}_${roomKey}`; // مفتاح مميز لكل غرفة
+        const trackerKey = `${houseCode}_${roomKey}`; 
         const now = Date.now();
 
-        // لو دي أول حركة تترصد، ننشئ العداد للغرفة دي
         if (!motionCounters[trackerKey]) {
             motionCounters[trackerKey] = { count: 0, lastMotionTime: now };
         }
 
-        // Time Window: لو عدى أكتر من دقيقتين (120,000 ملي ثانية) على آخر حركة..
-        // هنصفر العداد عشان ميحسبش حركات متفرقة على مدار اليوم كأنها "ورا بعض"
         if (now - motionCounters[trackerKey].lastMotionTime > 120000) {
             motionCounters[trackerKey].count = 0;
             console.log(`⏳ Motion timeout in [${roomKey}] - Counter Reset to 0`);
         }
 
-        // نزود العداد بمقدار 1 مع كل حركة جديدة وتحديث وقت الحركة
         motionCounters[trackerKey].count += 1;
         motionCounters[trackerKey].lastMotionTime = now;
 
         console.log(`🏃‍♂️ Motion Count [${roomKey}]: ${motionCounters[trackerKey].count}/7`);
 
-        // الشرط الحاسم: لو العداد وصل لـ 7 حركات متتالية ضمن الوقت المحدد
         if (motionCounters[trackerKey].count >= 7) {
-            mqttPublish(technohome/${houseCode}/${roomKey}/alert, JSON.stringify({
+            // ⚠️ الغلطة كانت هنا: نسيان الـ Backticks ` ` 
+            mqttPublish(`technohome/${houseCode}/${roomKey}/alert`, JSON.stringify({
                 type: 'MOTION_ALARM',
                 message: `⚠️ Motion Detected ${roomKey}!`
             }));
-            // إرسال الإنذار لأبلكيشن الفلاتر عبر السوكيت
+            
             io.to(houseCode).emit('danger_alert', {
                 type: 'MOTION_ALARM', 
                 roomKey, 
@@ -760,8 +731,6 @@ function _emitSensorAlerts(io, houseCode, roomKey, sensorName, value) {
             });
 
             console.log(`🚨 MOTION ALARM TRIGGERED in [${roomKey}]!`);
-
-            // تصفير العداد بعد إرسال الإنذار عشان ميفضلش يبعت إشعارات ورا بعض ويعلق الأبلكيشن
             motionCounters[trackerKey].count = 0;
         }
     }
@@ -772,7 +741,6 @@ function _emitSensorAlerts(io, houseCode, roomKey, sensorName, value) {
 // ─────────────────────────────────────────────
 async function startServer() {
     try {
-        // MongoDB Atlas
         if (!process.env.MONGO_URI) {
             console.error('❌ MONGO_URI is not defined in .env');
             process.exit(1);
@@ -783,7 +751,6 @@ async function startServer() {
         console.log('✅ Connected to MongoDB');
         await seedDatabase();
 
-        // HiveMQ Cloud
         if (!process.env.HIVEMQ_HOST || !process.env.HIVEMQ_USER || !process.env.HIVEMQ_PASSWORD) {
             console.error('❌ HiveMQ credentials missing in .env');
             process.exit(1);
@@ -796,22 +763,17 @@ async function startServer() {
             rejectUnauthorized:  true,
             reconnectPeriod:     5000,
             connectTimeout:      30000,
-            // ✅ تأكيد استلام الرسائل QoS 1
             clean: false
         });
 
         mqttClient.on('connect', () => {
             console.log(`✅ Connected to HiveMQ: ${process.env.HIVEMQ_HOST}`);
 
-            // اشتراك 1: قراءات الحساسات من الـ ESP
             mqttClient.subscribe('technohome/+/+/sensor/update', { qos: 1 }, (err) => {
                 if (err) console.error('❌ Subscribe error:', err.message);
                 else     console.log('📡 Subscribed to: technohome/+/+/sensor/update');
             });
 
-            // اشتراك 2: أوامر الأبواب عن طريق MQTT مباشرة
-            // format: technohome/{houseCode}/{roomKey}/door/command
-            // payload: {"doorName":"ApartmentDoor","pin":"0000"}
             mqttClient.subscribe('technohome/+/+/door/command', { qos: 1 }, (err) => {
                 if (err) console.error('❌ Subscribe error:', err.message);
                 else     console.log('📡 Subscribed to: technohome/+/+/door/command');
@@ -821,14 +783,12 @@ async function startServer() {
         mqttClient.on('message', (topic, message) => {
             handleMqttMessage(topic, message);
             handleMqttDoorCommand(topic, message);
-
         });
         mqttClient.on('reconnect',  ()    => console.log('🔄 MQTT Reconnecting...'));
         mqttClient.on('error',      (err) => console.error('❌ MQTT Error:', err.message));
         mqttClient.on('offline',    ()    => console.warn('⚠️  MQTT Offline'));
         mqttClient.on('disconnect', ()    => console.warn('⚠️  MQTT Disconnected from broker'));
 
-        // HTTP Server
         server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
     } catch (err) {
