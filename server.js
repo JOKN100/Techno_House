@@ -337,8 +337,8 @@ app.patch('/api/devices/:id', authMiddleware, async (req, res) => {
 
         const topic   = `technohome/${req.user.houseCode}/${device.roomKey}/${device.name}`;
         const payload = device.type === 'fan'
-            ? String(device.value)
-            : (device.status ? 'ON' : 'OFF');
+    ? (updateData.status === false || device.status === false ? '0' : String(device.value))
+    : (device.status ? 'ON' : 'OFF');
         mqttPublish(topic, payload);
 
         io.to(req.user.houseCode).emit('device_updated', device);
